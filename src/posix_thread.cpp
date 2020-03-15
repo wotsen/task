@@ -18,6 +18,16 @@
 namespace wotsen
 {
 
+enum
+{
+	MAX_THREAD_NAME_LEN = 15		///< 线程名最长长度
+};
+
+///< 最小栈
+#ifndef PTHREAD_STACK_MIN
+	#define PTHREAD_STACK_MIN 16384
+#endif
+
 /**
  * @brief 创建线程
  * 

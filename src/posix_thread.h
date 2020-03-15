@@ -17,19 +17,10 @@
 namespace wotsen
 {
 
-enum
-{
-	INVALID_PTHREAD_TID = 0,		///< 无效tid
-	MAX_THREAD_NAME_LEN = 15		///< 线程名最长长度
-};
+#define INVALID_PTHREAD_TID 0		///< 无效tid
 
 ///< 栈长度，传入数字以k为单位
 #define STACKSIZE(k) ((k)*1024)
-
-///< 最小栈
-#ifndef PTHREAD_STACK_MIN
-	#define PTHREAD_STACK_MIN 16384
-#endif
 
 /**
  * @brief 线程优先级
