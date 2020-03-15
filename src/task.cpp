@@ -10,13 +10,13 @@
  */
 
 #include <ctime>
-#include <cstring>
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <algorithm>
 #include "posix_thread.h"
 #include "task.h"
+#include "task_auto_manage.h"
 
 namespace wotsen
 {
@@ -31,17 +31,14 @@ namespace wotsen
 
 // 强制退出次数
 static const int MAX_CNT_TASK_FORCE_EXIT = 3;
-// 任务超时最大次数
-static const int MAX_CNT_TASK_TIMEOUT = 3;
-// 异常时间差s
-static const time_t MAX_ERROR_TIME = 60;
 
 static void *_task_run(Task *taskImpl);
 
 bool Task::stop = false;
+uint32_t Task::max_tasks = 128;
+abnormal_task_do Task::except_fun = nullptr;
 
-Task::Task(const uint32_t &max_tasks, abnormal_task_do except_fun) :
-	max_tasks_(max_tasks), except_fun_(except_fun)
+Task::Task()
 {
 	// 优先级校验
 	static_assert((int)e_max_task_pri_lv == (int)e_max_thread_pri_lv, "e_max_task_pri_lv != e_max_thread_pri_lv");
@@ -54,7 +51,7 @@ Task::Task(const uint32_t &max_tasks, abnormal_task_do except_fun) :
 	Task::stop = false;
 
 	// 启动任务管理
-	auto ret = task_manage(this);
+	auto ret = task_auto_manage(this);
 
 	if (INVALID_TASK_ID == ret.tid)
 	{
@@ -70,7 +67,7 @@ Task::~Task()
 	// 通知任务管理退出
 	Task::stop = true;
 
-	// 同步任务管理退出
+	// 同步任务管理退出，防止非法内存访问
 	manage_exit_fut_.get();
 
 	// 强制所有任务退出
@@ -151,7 +148,7 @@ bool Task::add_clean(const uint64_t &tid, const std::function<void()> &clean)
 // 添加任务
 bool Task::add_task(uint64_t &tid, const TaskRegisterInfo &reg_info, const std::function<void()> &task)
 {
-	if (tasks_.size() >= max_tasks_)
+	if (tasks_.size() >= max_tasks)
 	{
 		std::cout << "max full." << std::endl;
 		return false;
@@ -195,7 +192,7 @@ void Task::task_run(const uint64_t &tid)
 // 任务结束
 void Task::task_exit(const uint64_t &tid)
 {
-	auto _task = search_task(tid);
+	auto _task = task_ptr()->search_task(tid);
 
 	if (nullptr == _task)
     {
@@ -231,7 +228,9 @@ void Task::task_exit(const uint64_t &tid)
 
 	lock.lock();
 
-	std::unique_lock<std::mutex> t_lock(mtx_);
+	auto tasks_ = task_ptr()->tasks_;
+
+	std::unique_lock<std::mutex> t_lock(task_ptr()->mtx_);
 
 	// 移除队列
 	tasks_.erase(std::remove_if(tasks_.begin(),
@@ -250,7 +249,7 @@ void Task::task_exit(const uint64_t &tid)
 // 任务心跳
 bool Task::task_alive(const uint64_t &tid)
 {
-	auto _task = search_task(tid);
+	auto _task = task_ptr()->search_task(tid);
 
 	if (nullptr == _task)
     {
@@ -274,7 +273,7 @@ bool Task::task_alive(const uint64_t &tid)
 // 任务暂停
 void Task::task_wait(const uint64_t &tid)
 {
-	auto _task = search_task(tid);
+	auto _task = task_ptr()->search_task(tid);
 
 	if (nullptr == _task)
     {
@@ -290,7 +289,7 @@ void Task::task_wait(const uint64_t &tid)
 // 任务继续
 void Task::task_continue(const uint64_t &tid)
 {
-	auto _task = search_task(tid);
+	auto _task = task_ptr()->search_task(tid);
 
 	if (nullptr == _task)
     {
@@ -302,6 +301,7 @@ void Task::task_continue(const uint64_t &tid)
 	// 只有等待状态才能切换到继续执行
 	if (e_task_wait != _task->task_state.state) return;
 
+	_task->task_state.last_update_time = time(nullptr);
 	_task->task_state.state = e_task_alive;
 
 	_task->condition.notify_one();
@@ -310,7 +310,7 @@ void Task::task_continue(const uint64_t &tid)
 // 任务是否存活
 bool Task::is_task_alive(const uint64_t &tid)
 {
-	auto _task = search_task(tid);
+	auto _task = task_ptr()->search_task(tid);
 
 	if (nullptr == _task)
     {
@@ -326,7 +326,7 @@ bool Task::is_task_alive(const uint64_t &tid)
 // 获取任务状态
 enum task_state Task::task_state(const uint64_t &tid)
 {
-	auto _task = search_task(tid);
+	auto _task = task_ptr()->search_task(tid);
 
 	if (nullptr == _task)
     {
@@ -334,6 +334,19 @@ enum task_state Task::task_state(const uint64_t &tid)
     }
 
 	return _task->task_state.state;
+}
+
+std::shared_ptr<Task> &Task::task_ptr(void)
+{
+	static std::shared_ptr<Task> task_instance(new Task);
+
+	return task_instance;
+}
+
+void Task::task_init(const uint32_t &max_tasks, abnormal_task_do except_fun)
+{
+	Task::max_tasks = max_tasks;
+	Task::except_fun = except_fun;
 }
 
 /**
@@ -375,298 +388,4 @@ static void *_task_run(Task *taskImpl)
     return (void *)0;
 }
 
-// 任务自动管理
-class TaskManage
-{
-public:
-	TaskManage(Task *task) : task_(task), system_reboot_(false) {}
-	~TaskManage() {}
-
-public:
-	// 任务更新
-	void task_update(void) noexcept;
-
-private:
-	// 任务时间矫正
-	void task_correction_time(void) noexcept;
-	// 异常任务过滤
-	bool task_filter(std::shared_ptr<TaskDesc> &task);
-
-	// 超时标记
-	void timeout_mark(void) noexcept;
-	// 崩溃标记
-	void dead_mark(void);
-	// 异常处理
-	void except_do(void);
-	
-	// 任务崩溃处理
-	void task_dead_handler(std::shared_ptr<TaskDesc> &task);
-	// 清理崩溃任务
-	void clean_dead(void);
-
-private:
-	Task *task_;			///< 任务
-	time_t last_time_;		///< 最新记录时间
-	bool system_reboot_;	///< 系统重启
-};
-
-void TaskManage::task_update(void) noexcept
-{
-	// 清理死亡任务
-	clean_dead();
-	// 异常标记
-	dead_mark();
-    // 超时标记
-    timeout_mark();
-	// 异常处理
-	except_do();
-
-	if (system_reboot_)
-	{
-		// reboot;
-	}
-}
-
-void TaskManage::task_correction_time(void) noexcept
-{
-	static time_t last_time = time(nullptr);
-	time_t now = time(nullptr);
-
-	// 时间向前跳变和时间向后跳变超过一分钟，重置任务时间
-    if (now < last_time || (now - last_time) > MAX_ERROR_TIME)
-	{
-		std::unique_lock<std::mutex> lock(task_->mtx_);
-
-		for (auto item : task_->tasks_)
-		{
-			std::unique_lock<std::mutex> i_lock(item->mtx);
-
-			// 重置时间和次数
-			item->task_state.last_update_time = now;
-			item->task_state.timeout_times = 0;
-		}
-	}
-
-	last_time = now;
-}
-
-bool TaskManage::task_filter(std::shared_ptr<TaskDesc> &task)
-{
-	// 非存活任务或任务已经销毁则过滤掉
-	return e_task_alive != task->task_state.state || !is_task_alive(task->tid);
-}
-
-void TaskManage::dead_mark(void)
-{
-	std::unique_lock<std::mutex> lock(task_->mtx_);
-	
-	for (auto item : task_->tasks_)
-	{
-		if (e_task_dead != item->task_state.state
-			&& e_task_stop != item->task_state.state
-			&& !is_task_alive(item->tid))
-		{
-			std::unique_lock<std::mutex> i_lock(item->mtx);
-			item->task_state.state = e_task_dead;
-		}
-	}
-}
-
-void TaskManage::task_dead_handler(std::shared_ptr<TaskDesc> &task)
-{
-	switch (task->reg_info.e_action)
-	{
-	case e_task_ignore:
-		break;
-	case e_task_restart:
-		if (task->calls.e_action)
-			task->calls.e_action();
-		// TODO:重新创建任务
-		break;
-	case e_task_reboot_system:
-		if (task->calls.e_action)
-			task->calls.e_action();
-		system_reboot_ = true;
-		break;
-	case e_task_default:
-	default:
-		if (task->calls.e_action)
-			task->calls.e_action();
-		break;
-	}
-}
-
-void TaskManage::except_do(void)
-{
-	TaskExceptInfo ex_info;
-
-	for (auto item : task_->tasks_)
-	{
-		std::unique_lock<std::mutex> lock(item->mtx);
-
-		switch (item->task_state.state)
-		{
-		case e_task_timeout:
-			ex_info.tid = item->tid;
-			ex_info.task_name =	item->reg_info.task_attr.task_name;
-			ex_info.reason = "timeout";
-			
-			// 通知任务异常信息
-			if (task_->except_fun_) task_->except_fun_(ex_info);
-
-			// 执行超时接口
-			if (item->calls.timout_action) item->calls.timout_action();
-
-			// 下个周期做异常处理
-			item->task_state.state = e_task_dead;
-			lock.unlock();
-
-			break;
-
-		case e_task_dead:
-			lock.unlock();
-
-			ex_info.tid = item->tid;
-			ex_info.task_name =	item->reg_info.task_attr.task_name;
-			ex_info.reason = "except dead";
-
-			if (task_->except_fun_) task_->except_fun_(ex_info);
-
-			task_dead_handler(item);
-
-			break;
-
-		default:
-			lock.unlock();
-			break;
-		}
-	}
-}
-
-void TaskManage::timeout_mark(void) noexcept
-{
-	// 系统时间异常矫正
-    task_correction_time();
-
-	std::unique_lock<std::mutex> lock(task_->mtx_);
-	
-	for (auto item : task_->tasks_)
-	{
-		if (task_filter(item)) continue;
-
-		std::unique_lock<std::mutex> i_lock(item->mtx);
-
-		// 超时判断
-		if (time(nullptr) - item->task_state.last_update_time > item->reg_info.alive_time)
-		{
-			std::cout << "task [" << item->reg_info.task_attr.task_name << ", " << item->tid << "] timeout" << std::endl;
-
-			if (item->task_state.timeout_times++ > MAX_CNT_TASK_TIMEOUT)
-			{
-				// 先置超时，下次进行处理
-				item->task_state.state = e_task_timeout;
-			}
-		}
-		else
-		{
-			item->task_state.timeout_times = 0;
-		}
-
-		i_lock.unlock();
-	}
-}
-
-void TaskManage::clean_dead(void)
-{
-	std::unique_lock<std::mutex> lock(task_->mtx_);
-
-	task_->tasks_.erase(std::remove_if(task_->tasks_.begin(),
-										task_->tasks_.end(),
-										[](auto item) -> bool {
-											return e_task_dead == item->task_state.state;
-										}),
-						task_->tasks_.end());
-}
-
-TaskKey<int> task_manage(Task *task)
-{
-	TaskAttribute attr;
-	attr.task_name = "task manage";
-	attr.stacksize = TASK_STACKSIZE(8);
-	attr.priority = e_sys_task_pri_lv;
-
-	TaskKey<int> ret = new_task(attr, [task](void) -> int {
-		std::shared_ptr<TaskManage> manage(new TaskManage(task));
-
-		// 检测任务组件退出
-		for (; !Task::stop ;)
-		{
-			std::this_thread::sleep_for(std::chrono::seconds(5));
-			manage->task_update();
-		}
-
-		return 0;
-	});
-
-	return ret;
-}
-
 } // namespace wotsen
-
-/************************************************测试代码*********************************************************/
-
-#include <cstring>
-#include <thread>
-#include <chrono>
-// #include "posix_thread.h"
-
-int main(void)
-{
-	using namespace wotsen;
-
-	std::shared_ptr<Task> task(new Task);
-
-	TaskRegisterInfo reg_info;
-
-	reg_info.task_attr.task_name = "test task";
-	reg_info.task_attr.stacksize = TASK_STACKSIZE(50);
-	reg_info.task_attr.priority = e_sys_task_pri_lv;
-	reg_info.alive_time = 3 * 60;
-	reg_info.e_action = e_task_default;
-
-	auto ret = task->register_task(reg_info, [&](int a, int b)->int{
-		for (int i = 3; task->is_task_alive(task_id()) && i; i--)
-		{
-			std::cout << "alive......." << std::endl;
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-		}
-	
-		return 100;
-	}, 10, 20);
-
-	task->add_task_exit_action(ret.tid, [](){ std::cout << "task exit!" << std::endl; });
-
-	task->task_run(ret.tid);
-
-	task->task_exit(ret.tid);
-
-	TaskAttribute attr;
-	attr.task_name = "test2 task";
-	attr.stacksize = TASK_STACKSIZE(50);
-	attr.priority = e_sys_task_pri_lv;
-
-	auto ret2 = new_task(attr, [](int a, int b)->int{
-		for (int i = 3; i; i--)
-		{
-			std::cout << "alive2......." << std::endl;
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-		}
-	
-		return 200;
-	}, 10, 20);
-
-	std::cout << ret.fut.get() << std::endl;
-	std::cout << ret2.fut.get() << std::endl;
-
-	return 0;
-}

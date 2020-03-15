@@ -140,7 +140,6 @@ new_task(const TaskAttribute &attr, F&& f, Args&& ... args)
 	// 创建线程
 	if (!_create_util_task(&ret.tid, attr.stacksize, attr.priority, (task_util_call)_task_run, attr_ex))
     {
-		std::cout << "create task failed." << std::endl;
 		delete attr_ex;
     }
 

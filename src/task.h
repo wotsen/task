@@ -128,13 +128,17 @@ using abnormal_task_do = void (*)(const struct TaskExceptInfo &);
 
 class Task
 {
+// 不允许外部实例化
+private:
+	Task();
+
 public:
-	Task(const uint32_t &max_tasks=128, abnormal_task_do except_fun = nullptr);
 	~Task();
 
+public:
 	// 创建任务
 	template <typename F, typename... Args>
-	TaskKey<callable_ret_type<F, Args ...>>
+	static TaskKey<callable_ret_type<F, Args ...>>
 	register_task(const TaskRegisterInfo &reg_info, F&& f, Args&& ... args)
 	{
 		TaskKey<callable_ret_type<F, Args ...>> ret;
@@ -148,7 +152,7 @@ public:
 		ret.fut = task->get_future();
 
 		// 添加任务
-		if (!add_task(ret.tid, reg_info, [task](){ (*task)(); }))
+		if (!task_ptr()->add_task(ret.tid, reg_info, [task](){ (*task)(); }))
 		{
 			throw std::invalid_argument("add task create failed");
 		}
@@ -158,7 +162,7 @@ public:
 
 	// 添加任务异常行为
 	template <typename F, typename... Args>
-	future_callback_type<F, Args ...>
+	static future_callback_type<F, Args ...>
 	add_task_except_action(const uint64_t &tid, F&& f, Args&& ... args)
 	{
 		auto task = std::make_shared< std::packaged_task<callable_ret_type<F, Args ...>()> >(
@@ -167,7 +171,7 @@ public:
 		
 		future_callback_type<F, Args ...> ret = task->get_future();
 
-		if (!add_e_action(tid, [task](){ (*task)(); }))
+		if (!task_ptr()->add_e_action(tid, [task](){ (*task)(); }))
 		{
 			throw std::invalid_argument("add task except action failed");
 		}
@@ -177,7 +181,7 @@ public:
 
 	// 添加任务超时行为
 	template <typename F, typename... Args>
-	future_callback_type<F, Args ...>
+	static future_callback_type<F, Args ...>
 	add_task_timeout_action(const uint64_t &tid, F&& f, Args&& ... args)
 	{
 		auto task = std::make_shared< std::packaged_task<callable_ret_type<F, Args ...>()> >(
@@ -186,7 +190,7 @@ public:
 		
 		future_callback_type<F, Args ...> ret = task->get_future();
 
-		if (!add_timeout_action(tid, [task](){ (*task)(); }))
+		if (!task_ptr()->add_timeout_action(tid, [task](){ (*task)(); }))
 		{
 			throw std::invalid_argument("add task timeout action failed");
 		}
@@ -196,7 +200,7 @@ public:
 
 	// 添加任务结束行为
 	template <typename F, typename... Args>
-	future_callback_type<F, Args ...>
+	static future_callback_type<F, Args ...>
 	add_task_exit_action(const uint64_t &tid, F&& f, Args&& ... args)
 	{
 		auto task = std::make_shared< std::packaged_task<callable_ret_type<F, Args ...>()> >(
@@ -205,7 +209,7 @@ public:
 		
 		future_callback_type<F, Args ...> ret = task->get_future();
 
-		if (!add_clean(tid, [task](){ (*task)(); }))
+		if (!task_ptr()->add_clean(tid, [task](){ (*task)(); }))
 		{
 			throw std::invalid_argument("add task exit action failed");
 		}
@@ -214,29 +218,40 @@ public:
 	}
 
 	// 启动任务
-	void task_run(const uint64_t &tid);
+	static void task_run(const uint64_t &tid);
 	// 任务结束
-	void task_exit(const uint64_t &tid);
+	static void task_exit(const uint64_t &tid);
 
 	// 任务心跳
-	bool task_alive(const uint64_t &tid);
+	static bool task_alive(const uint64_t &tid);
 	// 任务是否存活
-	bool is_task_alive(const uint64_t &tid);
+	static bool is_task_alive(const uint64_t &tid);
 	// 获取任务状态
-	enum task_state task_state(const uint64_t &tid);
+	static enum task_state task_state(const uint64_t &tid);
 
 	// 任务暂停
-	void task_wait(const uint64_t &tid);
+	static void task_wait(const uint64_t &tid);
 	// 任务继续
-	void task_continue(const uint64_t &tid);
+	static void task_continue(const uint64_t &tid);
 
 public:
+	// 初始化任务组件
+	static void task_init(const uint32_t &max_tasks=128, abnormal_task_do except_fun=nullptr);
+
+private:
+	// 单例模式。获取任务组件，不允许外部获取
+	static std::shared_ptr<Task> &task_ptr(void);
+
+public:
+	friend class TaskAutoManage;
+	// 开启任务管理
+	friend TaskKey<int> task_auto_manage(Task *task);
+	
+public:
+	// 等待任务创建完成
 	void wait(void);
 	// 查找任务
 	std::shared_ptr<TaskDesc> search_task(const uint64_t &tid) noexcept;
-
-	friend TaskKey<int> task_manage(Task *task);
-	friend class TaskManage;
 
 private:
 	// 添加任务
@@ -248,15 +263,15 @@ private:
 	// 添加任务退出处理
 	bool add_clean(const uint64_t &tid, const std::function<void()> &clean);
 
-public:
+private:
 	static bool stop;								///< 停止标记
+	static uint32_t max_tasks;						///< 任务数量
+	static abnormal_task_do except_fun;				///< 异常报告
 
 private:
-	uint32_t max_tasks_;							///< 任务数量
-	abnormal_task_do except_fun_;					///< 任务队列
 	std::mutex mtx_;								///< 操作锁
 	std::vector<std::shared_ptr<TaskDesc>> tasks_;	///< 任务队列
-	std::future<int> manage_exit_fut_;
+	std::future<int> manage_exit_fut_;				///< 管理任务退出码
 };
 
 } // namespace wotsen
