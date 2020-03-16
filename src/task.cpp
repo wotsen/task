@@ -10,7 +10,6 @@
  */
 
 #include <ctime>
-#include <iostream>
 #include <thread>
 #include <chrono>
 #include <algorithm>
@@ -28,6 +27,8 @@ namespace wotsen
 #if TASK_STACKSIZE(1) != STACKSIZE(1)
 #error TASK_STACKSIZE defined not equal STACKSIZE
 #endif
+
+task_dbg_cb __dbg = nullptr;
 
 // 强制退出次数
 static const int MAX_CNT_TASK_FORCE_EXIT = 3;
@@ -98,7 +99,7 @@ std::shared_ptr<TaskDesc> Task::search_task(const uint64_t &tid) noexcept
 		}
 	}
 
-	std::cout << "not find task info = " << tid << ", can not run task!" << std::endl;
+	task_dbg("not find task = %d!\n", tid);
 
 	return static_cast<std::shared_ptr<TaskDesc>>(nullptr);
 }
@@ -150,7 +151,7 @@ bool Task::add_task(uint64_t &tid, const TaskRegisterInfo &reg_info, const std::
 {
 	if (tasks_.size() >= max_tasks)
 	{
-		std::cout << "max full." << std::endl;
+		task_dbg("task full.\n");
 		return false;
 	}
 
@@ -162,7 +163,7 @@ bool Task::add_task(uint64_t &tid, const TaskRegisterInfo &reg_info, const std::
 	// 创建线程
 	if (!create_thread(&_tid, reg_info.task_attr.stacksize, reg_info.task_attr.priority, (thread_func)_task_run, this))
     {
-		std::cout << "create thread failed." << std::endl;
+		task_dbg("create thread failed.\n");
         return false;
     }
 
@@ -172,7 +173,7 @@ bool Task::add_task(uint64_t &tid, const TaskRegisterInfo &reg_info, const std::
 	task_desc->tid = _tid;
 	task_desc->reg_info = reg_info;
 	task_desc->calls.task = task;
-	task_desc->task_state.create_time = time(nullptr);
+	task_desc->task_state.create_time = now();
 	task_desc->task_state.last_update_time = task_desc->task_state.create_time;
 	task_desc->task_state.timeout_times = 0;
 	task_desc->task_state.state = e_task_wait;
@@ -219,7 +220,7 @@ void Task::task_exit(const uint64_t &tid)
 
 	// 强制退出
 	if (thread_exsit(tid)) {
-		std::cout << "force destroy task [" << tid << "]." << std::endl;
+		task_dbg("force destroy task [%ld].\n", tid);
 		release_thread(tid);
 	}
 
@@ -265,7 +266,7 @@ bool Task::task_alive(const uint64_t &tid)
 	if (e_task_alive != _task->task_state.state) return false;
 
 	// 更新时间
-	_task->task_state.last_update_time = time(nullptr);
+	_task->task_state.last_update_time = now();
 
 	return true;
 }
@@ -301,7 +302,7 @@ void Task::task_continue(const uint64_t &tid)
 	// 只有等待状态才能切换到继续执行
 	if (e_task_wait != _task->task_state.state) return;
 
-	_task->task_state.last_update_time = time(nullptr);
+	_task->task_state.last_update_time = now();
 	_task->task_state.state = e_task_alive;
 
 	_task->condition.notify_one();
@@ -367,7 +368,7 @@ static void *_task_run(Task *taskImpl)
 
     if (nullptr == _task)
     {
-		std::cout << "not find task info = " << tid << ", can not run task!" << std::endl;
+		task_dbg("not find task info = %ld can not run task!\n", tid);
         return (void *)0;
     }
 
@@ -378,7 +379,7 @@ static void *_task_run(Task *taskImpl)
 	// 等待任务启动
 	while (e_task_wait == _task->task_state.state) _task->condition.wait(lck);
 
-	std::cout << "task " << _task->reg_info.task_attr.task_name << " run." << std::endl;
+	task_dbg("task %s run.\n", _task->reg_info.task_attr.task_name.c_str());
 
 	lck.unlock();
 
@@ -386,6 +387,11 @@ static void *_task_run(Task *taskImpl)
     _task->calls.task();
 
     return (void *)0;
+}
+
+void set_task_debug_cb(const task_dbg_cb cb)
+{
+	__dbg = cb;
 }
 
 } // namespace wotsen

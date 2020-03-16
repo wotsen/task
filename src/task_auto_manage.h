@@ -16,6 +16,13 @@
 namespace wotsen
 {
 
+#define task_dbg(fmt, args...) __dbg ? __dbg(fmt, ##args) : (void)0
+
+static inline time_t now(void)
+{
+	return time(nullptr);
+}
+
 // 任务自动管理
 class TaskAutoManage
 {

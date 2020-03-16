@@ -15,12 +15,26 @@
 #include <thread>
 #include <chrono>
 #include <iostream>
+#include <cstdarg>
 #include "task.h"
 
 using namespace wotsen;
 
+static void my_print(const char * fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    printf("about_stdarg >> my_print : ");
+    vprintf(fmt, ap);
+    va_end(ap);
+
+    return (void)0;
+}
+
 int main(void)
 {
+	set_task_debug_cb(my_print);
+
 	TaskRegisterInfo reg_info;
 
 	reg_info.task_attr.task_name = "test task";

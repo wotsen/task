@@ -10,7 +10,6 @@
  */
 
 #include <functional>
-#include <iostream>
 #include "posix_thread.h"
 #include "task_utils.h"
 

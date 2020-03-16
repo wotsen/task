@@ -74,14 +74,12 @@ bool create_thread(uint64_t *tid, const size_t &stacksize,
 
 	if (pthread_attr_init(&attr) < 0)
 	{
-		printf("init thread attr error : %s", strerror(errno));
 		return false;
 	}
 
 	/* 设置线程分离 */
 	if (pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED) < 0)
 	{
-		printf("set attr detachstate error : %s", strerror(errno));
 		pthread_attr_destroy(&attr);
 		return false;
 	}
@@ -89,7 +87,6 @@ bool create_thread(uint64_t *tid, const size_t &stacksize,
 	/* 设置调度策略FIFO */
 	if (pthread_attr_setschedpolicy(&attr, SCHED_RR) < 0)
 	{
-		printf("set attr schedpolicy error : %s\n", strerror(errno));
 		pthread_attr_destroy(&attr);
         return false;
 	}
@@ -97,7 +94,6 @@ bool create_thread(uint64_t *tid, const size_t &stacksize,
 	/* 设置线程优先级 */
 	if (pthread_attr_setschedparam(&attr, &param) < 0)
 	{
-		printf("set attr schedparam error : %s\n", strerror(errno));
 		pthread_attr_destroy(&attr);
         return false;
 	}
@@ -105,7 +101,6 @@ bool create_thread(uint64_t *tid, const size_t &stacksize,
 	/* 设置线程栈大小 */
 	if (pthread_attr_setstacksize(&attr, stacksize) < 0)
     {
-        printf("set attr stacksize error : %s\n", strerror(errno));
 		pthread_attr_destroy(&attr);
         return false;
     }
@@ -113,7 +108,6 @@ bool create_thread(uint64_t *tid, const size_t &stacksize,
 	/* 创建线程 */
 	if (pthread_create(&_tid, &attr, fn, arg) < 0)
 	{
-		printf("pthread_create failed : %s\n", strerror(errno));
 		pthread_attr_destroy(&attr);
 		return false;
 	}
@@ -190,12 +184,10 @@ bool thread_exsit(const uint64_t &tid)
 
 	if (ESRCH == pthread_kill_err)
     {
-        printf("task=[%ld] is not exist!\n", tid);
         return false;
     }
     else if (EINVAL == pthread_kill_err)
     {
-        printf("task=[%ld], send invalid signal to it!/n", tid);
         return false;
     }
     else

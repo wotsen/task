@@ -242,7 +242,7 @@ private:
 	// 单例模式。获取任务组件，不允许外部获取
 	static std::shared_ptr<Task> &task_ptr(void);
 
-public:
+private:
 	friend class TaskAutoManage;
 	// 开启任务管理
 	friend TaskKey<int> task_auto_manage(Task *task);
@@ -273,5 +273,10 @@ private:
 	std::vector<std::shared_ptr<TaskDesc>> tasks_;	///< 任务队列
 	std::future<int> manage_exit_fut_;				///< 管理任务退出码
 };
+
+// task调试打印回调接口
+using task_dbg_cb = void (*)(const char* fmt, ...);
+// 设置打印回调
+void set_task_debug_cb(const task_dbg_cb cb);
 
 } // namespace wotsen

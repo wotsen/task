@@ -9,12 +9,12 @@
  * 
  */
 
-#include <iostream>
 #include <algorithm>
 #include "task_auto_manage.h"
 
 namespace wotsen
 {
+extern task_dbg_cb __dbg;
 
 // 任务超时最大次数
 static const int MAX_CNT_TASK_TIMEOUT = 3;
@@ -40,11 +40,11 @@ void TaskAutoManage::task_update(void) noexcept
 
 void TaskAutoManage::task_correction_time(void) noexcept
 {
-	static time_t last_time = time(nullptr);
-	time_t now = time(nullptr);
+	static time_t last_time = now();
+	time_t now_t = now();
 
 	// 时间向前跳变和时间向后跳变超过一分钟，重置任务时间
-    if (now < last_time || (now - last_time) > MAX_ERROR_TIME)
+    if (now_t < last_time || (now_t - last_time) > MAX_ERROR_TIME)
 	{
 		std::unique_lock<std::mutex> lock(task_->mtx_);
 
@@ -53,12 +53,12 @@ void TaskAutoManage::task_correction_time(void) noexcept
 			std::unique_lock<std::mutex> i_lock(item->mtx);
 
 			// 重置时间和次数
-			item->task_state.last_update_time = now;
+			item->task_state.last_update_time = now_t;
 			item->task_state.timeout_times = 0;
 		}
 	}
 
-	last_time = now;
+	last_time = now_t;
 }
 
 bool TaskAutoManage::task_filter(std::shared_ptr<TaskDesc> &task)
@@ -90,19 +90,16 @@ void TaskAutoManage::task_dead_handler(std::shared_ptr<TaskDesc> &task)
 	case e_task_ignore:
 		break;
 	case e_task_restart:
-		if (task->calls.e_action)
-			task->calls.e_action();
+		if (task->calls.e_action) task->calls.e_action();
 		// TODO:重新创建任务
 		break;
 	case e_task_reboot_system:
-		if (task->calls.e_action)
-			task->calls.e_action();
+		if (task->calls.e_action) task->calls.e_action();
 		system_reboot_ = true;
 		break;
 	case e_task_default:
 	default:
-		if (task->calls.e_action)
-			task->calls.e_action();
+		if (task->calls.e_action) task->calls.e_action();
 		break;
 	}
 }
@@ -168,9 +165,9 @@ void TaskAutoManage::timeout_mark(void) noexcept
 		std::unique_lock<std::mutex> i_lock(item->mtx);
 
 		// 超时判断
-		if (time(nullptr) - item->task_state.last_update_time > item->reg_info.alive_time)
+		if (now() - item->task_state.last_update_time > item->reg_info.alive_time)
 		{
-			std::cout << "task [" << item->reg_info.task_attr.task_name << ", " << item->tid << "] timeout" << std::endl;
+			task_dbg("task [%s][%ld] timeout\n", item->reg_info.task_attr.task_name.c_str(), item->tid);
 
 			if (item->task_state.timeout_times++ > MAX_CNT_TASK_TIMEOUT)
 			{
@@ -216,7 +213,7 @@ TaskKey<int> task_auto_manage(Task *task)
 			manage->task_update();
 		}
 
-		std::cout << "exit......." << std::endl;
+		task_dbg("task auto manage exit.\n");
 
 		return 0;
 	});
