@@ -99,7 +99,7 @@ std::shared_ptr<TaskDesc> Task::search_task(const uint64_t &tid) noexcept
 		}
 	}
 
-	task_dbg("not find task = %d!\n", tid);
+	task_dbg("not find task = %ld!\n", tid);
 
 	return static_cast<std::shared_ptr<TaskDesc>>(nullptr);
 }
@@ -167,11 +167,15 @@ bool Task::add_task(uint64_t &tid, const TaskRegisterInfo &reg_info, const std::
         return false;
     }
 
+	// 查找队列中是否有相同id的任务，如果有则认为是已经退出，删除任务
+	del_task(_tid);
+
 	tid = _tid;
 
 	// 任务描述记录
 	task_desc->tid = _tid;
 	task_desc->reg_info = reg_info;
+	task_desc->reg_info.task_attr.task_name = reg_info.task_attr.task_name;
 	task_desc->calls.task = task;
 	task_desc->task_state.create_time = now();
 	task_desc->task_state.last_update_time = task_desc->task_state.create_time;
@@ -224,12 +228,12 @@ void Task::task_exit(const uint64_t &tid)
 		release_thread(tid);
 	}
 
+	lock.lock();
+
 	// 执行清理工作
 	if (_task->calls.clean) _task->calls.clean();
 
-	lock.lock();
-
-	auto tasks_ = task_ptr()->tasks_;
+	std::vector<std::shared_ptr<TaskDesc>> &tasks_ = task_ptr()->tasks_;
 
 	std::unique_lock<std::mutex> t_lock(task_ptr()->mtx_);
 
@@ -350,6 +354,21 @@ void Task::task_init(const uint32_t &max_tasks, abnormal_task_do except_fun)
 	Task::except_fun = except_fun;
 }
 
+void Task::del_task(const uint64_t &tid)
+{
+	for (auto item : tasks_)
+	{
+		std::unique_lock<std::mutex> lck(item->mtx);
+
+		if (tid == item->tid)
+		{
+			// 只是将任务id标记为无效，有任务管理进行处理
+			item->tid = INVALID_TASK_ID;
+			break;
+		}
+	}
+}
+
 /**
  * @brief 任务运行
  *
@@ -392,6 +411,13 @@ static void *_task_run(Task *taskImpl)
 void set_task_debug_cb(const task_dbg_cb cb)
 {
 	__dbg = cb;
+}
+
+const char* get_task_version(void)
+{
+	#define __TASK_VERSION "v1.0.0"
+
+	return __TASK_VERSION;
 }
 
 } // namespace wotsen

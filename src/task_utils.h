@@ -34,11 +34,11 @@ enum task_priority : int
 
 // 可调用对象返回类型
 template <typename F, typename... Args>
-using callable_ret_type = typename std::result_of<F(Args ...)>::type;
+using callable_ret_type = typename std::result_of<F(Args...)>::type;
 
 // 可调用对象返回值
 template <typename F, typename... Args>
-using future_callback_type = std::future<callable_ret_type<F, Args ...>>;
+using future_callback_type = std::future<callable_ret_type<F, Args...>>;
 
 /**
  * @brief 任务描述符
@@ -49,9 +49,9 @@ template <class T>
 class TaskKey
 {
 public:
-    std::future<T> fut;		///< 返回值
-#define INVALID_TASK_ID	0	///< 无效任务id
-    uint64_t tid;			///< 任务id
+	std::future<T> fut;   ///< 返回值
+#define INVALID_TASK_ID 0 ///< 无效任务id
+	uint64_t tid;		  ///< 任务id
 };
 
 /**
@@ -61,10 +61,10 @@ public:
 struct TaskAttribute
 {
 	// [NOTE]:不要使用memcpy拷贝
-    std::string task_name;					///< 任务名
-#define TASK_STACKSIZE(k)	((k) * 1024)	///< 栈内存计算k
-    size_t stacksize;						///< 栈内存
-    enum task_priority priority;			///< 优先级
+	std::string task_name;			 ///< 任务名
+#define TASK_STACKSIZE(k) ((k)*1024) ///< 栈内存计算k
+	size_t stacksize;				 ///< 栈内存
+	enum task_priority priority;	 ///< 优先级
 };
 
 /**
@@ -74,18 +74,20 @@ struct TaskAttribute
 struct TaskAttrEx
 {
 	TaskAttribute attr;			///< 基本属性
-	std::function<void()> task;	///< 可调对象
+	std::function<void()> task; ///< 可调对象
 };
 
+/*******************************************************/
 // 内部调用
 using task_util_call = void *(*)(TaskAttrEx *);
 
 // 内部任务创建
 bool _create_util_task(uint64_t *tid,
-					const size_t &stacksize,
-					const int &priority,
-					task_util_call fn,
-					void *arg=nullptr);
+					   const size_t &stacksize,
+					   const int &priority,
+					   task_util_call fn,
+					   void *arg = nullptr);
+/*******************************************************/
 
 // 获取任务id
 uint64_t task_id(void);
@@ -102,15 +104,14 @@ void kill_task(const uint64_t &tid);
 
 // 创建任务
 template <typename F, typename... Args>
-TaskKey<callable_ret_type<F, Args ...>>
-new_task(const TaskAttribute &attr, F&& f, Args&& ... args)
-{	
-	TaskKey<callable_ret_type<F, Args ...>> ret;
+TaskKey<callable_ret_type<F, Args...>>
+new_task(const TaskAttribute &attr, F &&f, Args &&... args)
+{
+	TaskKey<callable_ret_type<F, Args...>> ret;
 
 	// 可调用对象封装为void(void)
-	auto task = std::make_shared< std::packaged_task<callable_ret_type<F, Args ...>()> >(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
+	auto task = std::make_shared<std::packaged_task<callable_ret_type<F, Args...>()>>(
+		std::bind(std::forward<F>(f), std::forward<Args>(args)...));
 
 	// 获取未来值对象
 	ret.fut = task->get_future();
@@ -120,12 +121,9 @@ new_task(const TaskAttribute &attr, F&& f, Args&& ... args)
 	TaskAttrEx *attr_ex = new TaskAttrEx;
 
 	attr_ex->attr = attr;
-	attr_ex->task = [task](){ (*task)(); };
+	attr_ex->task = [task]() { (*task)(); };
 
-	auto _task_run = [](TaskAttrEx *attr_ex)-> void *
-	{
-		uint64_t tid = task_id();
-
+	auto _task_run = [](TaskAttrEx *attr_ex) -> void * {
 		set_task_name(attr_ex->attr.task_name);
 
 		auto task = attr_ex->task;
@@ -138,10 +136,14 @@ new_task(const TaskAttribute &attr, F&& f, Args&& ... args)
 	};
 
 	// 创建线程
-	if (!_create_util_task(&ret.tid, attr.stacksize, attr.priority, (task_util_call)_task_run, attr_ex))
-    {
+	if (!_create_util_task(&ret.tid,
+							attr.stacksize,
+							attr.priority,
+							(task_util_call)_task_run,
+							attr_ex))
+	{
 		delete attr_ex;
-    }
+	}
 
 	return ret;
 }

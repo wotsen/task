@@ -64,18 +64,22 @@ void TaskAutoManage::task_correction_time(void) noexcept
 bool TaskAutoManage::task_filter(std::shared_ptr<TaskDesc> &task)
 {
 	// 非存活任务或任务已经销毁则过滤掉
-	return e_task_alive != task->task_state.state || !is_task_alive(task->tid);
+	return INVALID_TASK_ID == task->tid
+			|| e_task_alive != task->task_state.state
+			|| !is_task_alive(task->tid);
 }
 
 void TaskAutoManage::dead_mark(void)
 {
 	std::unique_lock<std::mutex> lock(task_->mtx_);
-	
+
 	for (auto item : task_->tasks_)
 	{
-		if (e_task_dead != item->task_state.state
+		// 无效任务及退出任务
+		if (INVALID_TASK_ID == item->tid ||
+			(e_task_dead != item->task_state.state
 			&& e_task_stop != item->task_state.state
-			&& !is_task_alive(item->tid))
+			&& !is_task_alive(item->tid)))
 		{
 			std::unique_lock<std::mutex> i_lock(item->mtx);
 			item->task_state.state = e_task_dead;
@@ -88,10 +92,6 @@ void TaskAutoManage::task_dead_handler(std::shared_ptr<TaskDesc> &task)
 	switch (task->reg_info.e_action)
 	{
 	case e_task_ignore:
-		break;
-	case e_task_restart:
-		if (task->calls.e_action) task->calls.e_action();
-		// TODO:重新创建任务
 		break;
 	case e_task_reboot_system:
 		if (task->calls.e_action) task->calls.e_action();
@@ -118,6 +118,8 @@ void TaskAutoManage::except_do(void)
 			ex_info.tid = item->tid;
 			ex_info.task_name =	item->reg_info.task_attr.task_name;
 			ex_info.reason = "timeout";
+
+			lock.unlock();
 			
 			// 通知任务异常信息
 			if (Task::except_fun) Task::except_fun(ex_info);
@@ -125,6 +127,7 @@ void TaskAutoManage::except_do(void)
 			// 执行超时接口
 			if (item->calls.timout_action) item->calls.timout_action();
 
+			lock.lock();
 			// 下个周期做异常处理
 			item->task_state.state = e_task_dead;
 			lock.unlock();
@@ -169,7 +172,7 @@ void TaskAutoManage::timeout_mark(void) noexcept
 		{
 			task_dbg("task [%s][%ld] timeout\n", item->reg_info.task_attr.task_name.c_str(), item->tid);
 
-			if (item->task_state.timeout_times++ > MAX_CNT_TASK_TIMEOUT)
+			if (item->task_state.timeout_times++ >= MAX_CNT_TASK_TIMEOUT)
 			{
 				// 先置超时，下次进行处理
 				item->task_state.state = e_task_timeout;
@@ -209,7 +212,7 @@ TaskKey<int> task_auto_manage(Task *task)
 		// 检测任务组件退出
 		for (; !Task::stop ;)
 		{
-			std::this_thread::sleep_for(std::chrono::seconds(5));
+			std::this_thread::sleep_for(std::chrono::seconds(1));
 			manage->task_update();
 		}
 

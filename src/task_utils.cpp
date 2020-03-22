@@ -16,7 +16,8 @@
 namespace wotsen
 {
 
-bool _create_util_task(uint64_t *tid, const size_t &stacksize, const int &priority, task_util_call fn, void *arg)
+bool _create_util_task(uint64_t *tid, const size_t &stacksize,
+						const int &priority, task_util_call fn, void *arg)
 {
 	return create_thread(tid, stacksize, priority, (thread_func)fn, arg);
 }
