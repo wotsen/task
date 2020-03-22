@@ -16,7 +16,7 @@
 namespace wotsen
 {
 
-#define task_dbg(fmt, args...) __dbg ? __dbg(fmt, ##args) : (void)0
+#define task_dbg(fmt, args...) __dbg ? __dbg("[%s][%d][%s]" fmt, __FILE__, __LINE__, __PRETTY_FUNCTION__, ##args) : (void)0
 
 static inline time_t now(void)
 {

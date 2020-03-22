@@ -25,7 +25,6 @@ static void my_print(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	printf("about_stdarg >> my_print : ");
 	vprintf(fmt, ap);
 	va_end(ap);
 
@@ -39,7 +38,7 @@ int main(void)
 	printf("version : %s\n", version.c_str());
 
 	// 设置回调
-	// set_task_debug_cb(my_print);
+	set_task_debug_cb(my_print);
 
 	/*************************************任务1********************************************/
 
