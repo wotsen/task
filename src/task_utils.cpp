@@ -35,14 +35,20 @@ bool is_task_alive(const uint64_t &tid)
 }
 
 // 设置任务名
-void set_task_name(const std::string &name)
+void set_task_name(const std::string &name, const uint64_t &tid)
 {
-	set_task_name(name.c_str());
+	set_task_name(name.empty() ? nullptr : name.c_str(), tid);
 }
 
-void set_task_name(const char *name)
+void set_task_name(const char *name, const uint64_t &tid)
 {
-	set_thread_name(name);
+	set_thread_name(name, tid);
+}
+
+// 获取任务名
+std::string &&get_task_name(const uint64_t &tid)
+{
+	return get_thread_name(tid);
 }
 
 // 结束任务

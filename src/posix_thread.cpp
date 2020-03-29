@@ -132,21 +132,34 @@ uint64_t thread_id(void)
  * 
  * @param name 
  */
-void set_thread_name(const char *name)
+void set_thread_name(const char *name, const uint64_t &tid)
 {
 	char pname[MAX_THREAD_NAME_LEN + 1] = {'\0'};
-	pthread_t tid = pthread_self();
+	pthread_t _tid = tid != INVALID_PTHREAD_TID ? tid : pthread_self();
 
-	if (NULL != name)
+	if (name)
     {
         sprintf(pname, "%s", (char *)name);
-        prctl(PR_SET_NAME, pname);
+        // prctl(PR_SET_NAME, pname);
     }
     else
     {
-        sprintf(pname, "p%zu", tid);
-        prctl(PR_SET_NAME, pname);
+        sprintf(pname, "p%zu", _tid);
+        // prctl(PR_SET_NAME, pname);
     }
+
+	pthread_setname_np(_tid, pname);
+}
+
+///< 获取线程名
+std::string &&get_thread_name(const uint64_t &tid)
+{
+	char pname[MAX_THREAD_NAME_LEN + 1] = {'\0'};
+	pthread_t _tid = tid != INVALID_PTHREAD_TID ? tid : pthread_self();
+
+	pthread_getname_np(_tid, pname, sizeof(pname));
+
+	return std::move(std::string(pname));
 }
 
 /**

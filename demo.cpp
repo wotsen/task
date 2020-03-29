@@ -54,6 +54,7 @@ int main(void)
 		for (int i = 6; Task::is_task_alive(task_id()) && i; i--)
 		{
 			std::cout << "alive1....... " << task_id() << std::endl;
+			std::cout << "name : " << get_task_name() << std::endl;
 			assert(Task::task_state(task_id()) == wotsen::e_task_alive);
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}

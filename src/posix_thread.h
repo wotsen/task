@@ -13,6 +13,7 @@
 
 #include <cinttypes>
 #include <cstdio>
+#include <string>
 
 namespace wotsen
 {
@@ -46,7 +47,10 @@ bool create_thread(uint64_t *tid, const size_t &stacksize, const int &priority, 
 uint64_t thread_id(void);
 
 ///< 设置线程名
-void set_thread_name(const char *name);
+void set_thread_name(const char *name, const uint64_t &tid=INVALID_PTHREAD_TID);
+
+///< 获取线程名
+std::string &&get_thread_name(const uint64_t &tid=INVALID_PTHREAD_TID);
 
 ///< 释放线程
 bool release_thread(const uint64_t &tid);

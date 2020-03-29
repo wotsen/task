@@ -96,8 +96,11 @@ uint64_t task_id(void);
 bool is_task_alive(const uint64_t &tid);
 
 // 设置任务名
-void set_task_name(const std::string &name);
-void set_task_name(const char *name);
+void set_task_name(const std::string &name, const uint64_t &tid=INVALID_TASK_ID);
+void set_task_name(const char *name, const uint64_t &tid=INVALID_TASK_ID);
+
+// 获取任务名
+std::string &&get_task_name(const uint64_t &tid=INVALID_TASK_ID);
 
 // 结束任务
 void kill_task(const uint64_t &tid);
